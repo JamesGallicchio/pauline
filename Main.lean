@@ -25,29 +25,28 @@ theorem div_tc
   sorry
 
 theorem div_thm
-  : ∀ n d : Nat, ∃ q r : Nat,
+  : ∀ n d : Nat, d > 0 → ∃ q r : Nat,
     r < d ∧
     n = q * d + r ∧
     [smlprop|
       program_state ⊢ div (↑n, ↑d) ==>* program_state ⊢ ↑q
     ]
   := by
-  intro n d
+  intro n d h_d
   induction n using Nat.strongInductionOn
   case ind n ih =>
-  cases h : decide (n < d)
-  case true =>
-    clear ih
-    refine ⟨0, n, (decide_eq_true_iff _).mp h, by simp, ?_⟩
+  if h : n < d then
+    refine ⟨0, n, h, by simp, ?_⟩
     (calc
       (program_state, [sml_exp| div (↑n, ↑d)])
         ==>* (program_state, [sml_exp| 0 ]) := by sorry
       _ ==>* (program_state, [sml_exp| ↑0 ]) := ⟨0, rfl, rfl⟩
     )
-  case false =>
-    have : n - d < n := sorry
+  else
+    have : n - d < n := Nat.sub_lt (Nat.lt_of_lt_of_le h_d (Nat.ge_of_not_lt h)) h_d
     have ⟨q,r,hr,hn,steps⟩ := ih (n-d) this
-    have : n = (1+q) * d + r := sorry
+    have : n = (1+q) * d + r := by
+      rw [Nat.add_mul, Nat.add_assoc, ←hn, Nat.one_mul, Nat.add_comm, Nat.sub_add_cancel (Nat.ge_of_not_lt h)]
     refine ⟨_, _, hr, this, ?_⟩
     (calc
              (program_state, [sml_exp| div (↑n, ↑d)])

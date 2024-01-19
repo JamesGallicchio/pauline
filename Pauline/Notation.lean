@@ -115,9 +115,16 @@ syntax sml_exp sml_exp : sml_exp
 syntax "if " sml_exp " then " sml_exp " else " sml_exp : sml_exp
 syntax "fn " sml_pat "=>" sml_exp : sml_exp
 
-syntax sml_exp "<" sml_exp : sml_exp
-syntax sml_exp "+" sml_exp : sml_exp
-syntax sml_exp "-" sml_exp : sml_exp
+syntax sml_exp "="    sml_exp : sml_exp
+syntax sml_exp "<>"   sml_exp : sml_exp
+syntax sml_exp "<"    sml_exp : sml_exp
+syntax sml_exp ">"    sml_exp : sml_exp
+syntax sml_exp "<="   sml_exp : sml_exp
+syntax sml_exp ">="   sml_exp : sml_exp
+syntax sml_exp "+"    sml_exp : sml_exp
+syntax sml_exp "-"    sml_exp : sml_exp
+syntax sml_exp "*"    sml_exp : sml_exp
+syntax sml_exp "div"  sml_exp : sml_exp
 syntax "↑" term:max : sml_exp
 
 syntax "[sml_exp_tuple|" sml_exp,+ "]" : term
@@ -141,12 +148,24 @@ macro_rules
 | `([sml_exp| fn $p => $e ]) =>
   `(Exp.lam [sml_pat| $p ] [sml_exp| $e ])
 
+| `([sml_exp| $e1 = $e2 ]) =>
+  `(Exp.app (Exp.var "=") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 < $e2 ]) =>
   `(Exp.app (Exp.var "<") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+| `([sml_exp| $e1 > $e2 ]) =>
+  `(Exp.app (Exp.var ">") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+| `([sml_exp| $e1 <= $e2 ]) =>
+  `(Exp.app (Exp.var "<=") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+| `([sml_exp| $e1 >= $e2 ]) =>
+  `(Exp.app (Exp.var ">=") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 + $e2 ]) =>
   `(Exp.app (Exp.var "+") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 - $e2 ]) =>
   `(Exp.app (Exp.var "-") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+| `([sml_exp| $e1 * $e2 ]) =>
+  `(Exp.app (Exp.var "*") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+| `([sml_exp| $e1 div $e2 ]) =>
+  `(Exp.app (Exp.var "div") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 
 | `([sml_exp| ↑$e:term ]) => `(↑$e)
 
@@ -196,11 +215,13 @@ macro "[sml|" ds:sml_decl* "]" : term =>
 macro "[smlprop|" C:term "⊢" e:sml_exp " : " t:sml_typ "]" : term =>
   ``(HasType $C [sml_exp| $e ] [sml_typ| $t ] )
 
-macro s:term " ==> " s':term : term =>
-  ``(StepExp $s $s')
+notation:50 s:51 " ==> " s':51  => StepExp s s'
+-- macro s:term " ==> " s':term : term =>
+  -- ``(StepExp $s $s')
 
-macro s:term " ==>* " s':term : term =>
-  ``(StepsExp $s $s')
+notation:50 s:51 " ==>* " s':51  => StepsExp s s'
+-- macro s:term " ==>* " s':term : term =>
+  -- ``(StepsExp $s $s')
 
 macro "[smlprop|" C:term "⊢" e:sml_exp " ==> " C':term "⊢" e':sml_exp "]" : term =>
   ``(StepExp ($C, [sml_exp| $e ]) ($C', [sml_exp| $e' ]))

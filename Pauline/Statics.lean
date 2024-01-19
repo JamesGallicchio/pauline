@@ -29,8 +29,9 @@ def Context.updateEnv (f : Env → Env) : Context → Context
 def typEq (_ : Context) : Typ → Typ → Bool := BEq.beq
 
 def typeSCon : SCon → Typ
-| .int _ => .int
-| .str _ => .string
+| .int _  => .int
+| .bool _ => .bool
+| .str _  => .string
 
 
 mutual

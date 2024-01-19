@@ -3,54 +3,59 @@ import Pauline.Statics
 
 open Pauline
 
-def program := [sml|
+def fact := [sml|
 
-  val loop = fn L => loop L
-
-  fun div (n : int, d : int) : int =
-    if n < d
-    then 0
-    else 1 + div (n-d, d)
+  fun fact (n : int) : int =
+    if n = 0
+    then 1
+    else n * fact (n - 1)
 
 ]
 
 def program_ctx : Context := sorry
-def program_state : State := sorry
+def program_state : State :=
+  let init : State := default
+  ⟨ Std.HashMap.insert init.values "fact" -- todo automate
+      ⟨[sml_exp| fn n => if n = 0 then 1 else n * fact (n - 1)], by decide⟩
+  ⟩
+#eval eval program_state [sml_exp| fact 12]
 
-theorem div_tc
+theorem fact_tc
   : [smlprop|
-      program_ctx ⊢ div : int * int -> int
+      program_ctx ⊢ fact : int -> int
     ]
   := by
   sorry
 
-theorem div_thm
-  : ∀ n d : Nat, d > 0 → ∃ q r : Nat,
-    r < d ∧
-    n = q * d + r ∧
+elab "sml_eval" : tactic =>
+  Lean.Elab.Tactic.withMainContext do
+    let goal ← Lean.Elab.Tactic.getMainTarget
+    let expr_type ← Lean.Meta.inferType goal
+    dbg_trace f!"goal: {goal}"
+
+
+theorem fact_requires_total
+  : ∀ n : Nat, n ≥ 0 → ∃ v : Nat,
     [smlprop|
-      program_state ⊢ div (↑n, ↑d) ==>* program_state ⊢ ↑q
+      program_state ⊢ fact ↑n ==>* program_state ⊢ ↑v
     ]
   := by
-  intro n d h_d
-  induction n using Nat.strongInductionOn
-  case ind n ih =>
-  if h : n < d then
-    refine ⟨0, n, h, by simp, ?_⟩
+  intro n requires
+  induction n
+  case zero =>
+    refine ⟨0, ?_⟩
+    sml_eval
     (calc
-      (program_state, [sml_exp| div (↑n, ↑d)])
-        ==>* (program_state, [sml_exp| 0 ]) := by sorry
-      _ ==>* (program_state, [sml_exp| ↑0 ]) := ⟨0, rfl, rfl⟩
+      (program_state, [sml_exp| fact ↑0])
+      ==>* (program_state, [sml_exp| 0]) := by sorry
     )
-  else
-    have : n - d < n := Nat.sub_lt (Nat.lt_of_lt_of_le h_d (Nat.ge_of_not_lt h)) h_d
-    have ⟨q,r,hr,hn,steps⟩ := ih (n-d) this
-    have : n = (1+q) * d + r := by
-      rw [Nat.add_mul, Nat.add_assoc, ←hn, Nat.one_mul, Nat.add_comm, Nat.sub_add_cancel (Nat.ge_of_not_lt h)]
-    refine ⟨_, _, hr, this, ?_⟩
+  case succ n' ih =>
+    simp at *
+    have v' := ih.choose
+    refine ⟨n' * v', ?_⟩
     (calc
-             (program_state, [sml_exp| div (↑n, ↑d)])
-        ==>* (program_state, [sml_exp| 1 + div (↑n-↑d,↑d)]) := by sorry
-      _ ==>* (program_state, [sml_exp| 1 + ↑q ])            := by sorry -- ih
-      _ ==>* (program_state, [sml_exp| ↑(1+q) ])            := by sorry
+             (program_state, [sml_exp| fact (↑(n' + 1))])
+        ==>* (program_state, [sml_exp| ↑n' * fact (↑n' - 1)]) := by sorry
+      _ ==>* (program_state, [sml_exp| ↑n' * ↑v'])            := by sorry -- ih
+      _ ==>* (program_state, [sml_exp| ↑(n' * v')])          := by sorry
     )

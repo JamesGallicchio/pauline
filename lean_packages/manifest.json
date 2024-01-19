@@ -1,6 +1,0 @@
-{"version": 2,
- "packages":
- [{"url": "https://github.com/JamesGallicchio/std4",
-   "rev": "2d2f2082a3c4e3dc37519624dfeb80a26941c5f9",
-   "name": "std",
-   "inputRev": "nonempty-lists"}]}

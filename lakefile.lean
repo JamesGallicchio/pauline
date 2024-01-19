@@ -5,12 +5,13 @@ package pauline {
   precompileModules := true
 }
 
-@[defaultTarget]
+@[default_target]
 lean_lib Pauline
 
-@[defaultTarget]
+@[default_target]
 lean_exe test {
   root := `Main
 }
 
-require std from git "https://github.com/JamesGallicchio/std4" @ "nonempty-lists"
+-- require std from git "https://github.com/leanprover/std4" @ "v4.5.0-rc1"
+require leancolls from git "https://github.com/T-Brick/LeanColls" @ "list-nonempty"

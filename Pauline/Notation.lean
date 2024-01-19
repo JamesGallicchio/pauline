@@ -166,13 +166,13 @@ macro_rules
 | `([sml_decl| fun $id:sml_vid $p:sml_atpat $ps:sml_atpat* = $e ]) =>
   ``(Dec.fun
       ([sml_vid| $id ])
-      (⟨[sml_atpat| $p ], [sml_atpats| $ps,* ]⟩)
+      (⟨[sml_atpat| $p ] :: [sml_atpats| $ps,* ], by simp⟩)
       none
       ([sml_exp| $e ]))
 | `([sml_decl| fun $id:sml_vid $p:sml_atpat $ps:sml_atpat* : $t = $e ]) =>
   ``(Dec.fun
       ([sml_vid| $id ])
-      (⟨[sml_atpat| $p ], [sml_atpats| $ps,* ]⟩)
+      (⟨[sml_atpat| $p ] :: [sml_atpats| $ps,* ], by simp⟩)
       (some [sml_typ| $t ])
       ([sml_exp| $e ]))
 | `([sml_decl| val $p = $e ]) =>

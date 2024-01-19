@@ -1,4 +1,4 @@
-import Std
+import LeanColls.Data.List
 
 open Std
 
@@ -30,6 +30,8 @@ inductive Pat
 | layer (name : Ident) (ty : Option Typ) (p : Pat)
 deriving Repr
 
+instance : CoeHead Pat (List Pat) := ⟨([·])⟩
+
 mutual
 inductive Exp
 | scon (sc : SCon)
@@ -47,7 +49,7 @@ deriving Repr, Inhabited
 inductive Dec
 | val (p : Pat) (exp : Exp)
 | valrec (p : Pat) (expPat : Pat) (expBody : Exp)
-| «fun» (name : Ident) (pats : NonemptyList Pat) (ret : Option Typ) (body : Exp)
+| «fun» (name : Ident) (pats : List.Nonempty Pat) (ret : Option Typ) (body : Exp)
 deriving Repr
 end
 

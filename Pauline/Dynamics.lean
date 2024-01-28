@@ -54,23 +54,54 @@ def Extern.ge : Exp :=
   .extern "<=" (fun | [.int x, .int y] => .scon (.bool (x ≥ y))
                     | _ => panic! "Extern TC Failure" )
 
-structure State where
-  values : HashMap Ident { e // isVal e }
+def HashMap.beq [Hashable α] [BEq α] [BEq β] (m₁ m₂ : HashMap α β) : Bool :=
+  m₁.toList == m₂.toList
+instance [Hashable α] [BEq α] [BEq β] : BEq (HashMap α β) := ⟨HashMap.beq⟩
 
+structure State where -- not correct for closures : )
+  idents  : List Ident
+  find : Ident → Option { e // isVal e }
+  valid_map : ∀ x ∈ idents, ∃ e, find x = some e
+
+def State.empty : State :=
+  ⟨[], fun _ => none, by simp⟩
+
+def State.insert (s : State) (x : Ident) (e : { e // isVal e }) : State :=
+  ⟨ x :: s.idents
+  , fun x' => if x = x' then some e else s.find x'
+  , sorry
+  ⟩
+
+instance : BEq { e // isVal e } := ⟨(·.val == ·.val)⟩
+-- instance : BEq State where
+  -- beq s₁ s₂ := HashMap.beq s₁.values s₂.values
+
+instance : Inhabited {e // isVal e} := ⟨⟨.tuple [], by decide⟩⟩
 instance : Inhabited State where
   default :=
-    ⟨ HashMap.empty
-      |>.insert "+"   ⟨Extern.add, by decide⟩
-      |>.insert "-"   ⟨Extern.sub, by decide⟩
-      |>.insert "*"   ⟨Extern.mul, by decide⟩
-      |>.insert "div" ⟨Extern.div, by decide⟩
-      |>.insert "="   ⟨Extern.eq , by decide⟩
-      |>.insert "<>"  ⟨Extern.neq, by decide⟩
-      |>.insert "<"   ⟨Extern.lt , by decide⟩
-      |>.insert ">"   ⟨Extern.gt , by decide⟩
-      |>.insert "<="  ⟨Extern.le , by decide⟩
-      |>.insert ">="  ⟨Extern.ge , by decide⟩
-    ⟩
+    State.empty
+    |>.insert "+"   ⟨Extern.add, by decide⟩
+    |>.insert "-"   ⟨Extern.sub, by decide⟩
+    |>.insert "*"   ⟨Extern.mul, by decide⟩
+    |>.insert "div" ⟨Extern.div, by decide⟩
+    |>.insert "="   ⟨Extern.eq , by decide⟩
+    |>.insert "<>"  ⟨Extern.neq, by decide⟩
+    |>.insert "<"   ⟨Extern.lt , by decide⟩
+    |>.insert ">"   ⟨Extern.gt , by decide⟩
+    |>.insert "<="  ⟨Extern.le , by decide⟩
+    |>.insert ">="  ⟨Extern.ge , by decide⟩
+
+abbrev State.NonAdversarial (s : State) : Prop :=
+    (s.find "+"   = some ⟨Extern.add, by decide⟩)
+  ∧ (s.find "-"   = some ⟨Extern.sub, by decide⟩)
+  ∧ (s.find "*"   = some ⟨Extern.mul, by decide⟩)
+  ∧ (s.find "div" = some ⟨Extern.div, by decide⟩)
+  ∧ (s.find "="   = some ⟨Extern.eq , by decide⟩)
+  ∧ (s.find "<>"  = some ⟨Extern.neq, by decide⟩)
+  ∧ (s.find "<"   = some ⟨Extern.lt , by decide⟩)
+  ∧ (s.find ">"   = some ⟨Extern.gt , by decide⟩)
+  ∧ (s.find "<="  = some ⟨Extern.le , by decide⟩)
+  ∧ (s.find ">="  = some ⟨Extern.ge , by decide⟩)
 
 def Pat.bindsIdent (i : Ident) : Pat → Bool
 | wild            => false
@@ -83,6 +114,7 @@ def Pat.bindsIdent (i : Ident) : Pat → Bool
 
 mutual
 variable (e : Exp) (x : Ident)
+@[simp, reducible]
 def subst : Exp → Exp
 | .scon x     => .scon x
 | .lam p body => if p.bindsIdent x then .lam p body else .lam p (subst body)
@@ -92,37 +124,55 @@ def subst : Exp → Exp
 | .ite i t e' => .ite (subst i) (subst t) (subst e')
 | .app f e' => .app (subst f) (subst e')
 | .let_in _ _ => panic! "unimplemented"
-| .var i => if x = i then e else .var i
+| .var i =>
+  let h : x = i ∨ x ≠ i := Classical.em (x = i)
+  if x = i then e else .var i
 | .raise e' => .raise (subst e')
 | .extern name f => .extern name f
 
+@[simp, reducible]
 def substList : List Exp → List Exp
 | [] => []
 | e'::es => subst e' :: substList es
 
+@[simp, reducible]
 def substMatches : List (Pat × Exp) → List (Pat × Exp)
 | [] => []
 | (p,e')::ms => (if p.bindsIdent x then (p,e') else (p, subst e')) :: substMatches ms
 end
 
-partial def substPat (body : Exp) : { e // isVal e } → Pat → Exp
-  | _, .wild => body
-  | ⟨.typed e _, _⟩, p => substPat body ⟨e, sorry⟩ p
-  | e, .typed p _ => substPat body e p
-  | e, .bind name => subst e.val name body
-  | ⟨.scon e_sc, _⟩, .scon p_sc =>
-    if e_sc = p_sc then body else .raise Exn.bind
-  | ⟨.tuple [], _⟩, .tuple [] => body
-  | ⟨.tuple (e::es), _⟩, .tuple (p::ps) =>
-    let res := substPat body ⟨e, sorry⟩ p
-    match substPat body ⟨.tuple es, sorry⟩ (.tuple ps) with
-    | .tuple res_rest => .tuple (res :: res_rest)
-    | _ => .raise Exn.bind
-  | _, .tuple _ => .raise Exn.bind
-  | e, .layer name _ p => substPat (subst e.val name body) e p
-  | _, _ => .raise Exn.bind
+@[simp] def substPat (body : Exp) (e :  { e // isVal e }) (p : Pat) : Exp :=
+  match p with
+  | .wild           => body
+  | .bind name      => subst e.val name body
+  | .layer name _ p => substPat (subst e.val name body) e p
+  | .scon p_sc      => if let .scon e_sc := e.val then body else .raise Exn.bind
+  | .typed p _      => substPat body e p
+  | .tuple []       => if let .tuple [] := e.val then body else .raise Exn.bind
+  | .tuple (p::[])  =>
+    if let .tuple (e::[]) := e.val
+    then substPat body ⟨e, sorry⟩ p
+    else .raise Exn.bind
+  | .tuple (p::ps)  =>
+    if let .tuple (e::es) := e.val then
+      let res := substPat body ⟨e, sorry⟩ p
+      match substPat body ⟨.tuple es, sorry⟩ (.tuple ps) with
+      | .tuple res_rest => .tuple (res :: res_rest)
+      | _ => .raise Exn.bind
+    else .raise Exn.bind
 
-def callExtern (f : List SCon → Exp) : { e // isVal e } → Exp
+def test : Exp :=
+  Exp.ite
+    (Exp.app (.var "=") (.tuple [.var "n", .scon (.int 0)]))
+    (Exp.scon (.int 1))
+    (Exp.scon (.int 2))
+
+#eval substPat
+  test
+  ⟨.scon (.int 0), by decide⟩
+  (.bind "n")
+
+@[simp] def callExtern (f : List SCon → Exp) : { e // isVal e } → Exp
   | ⟨.scon sc, _⟩ => f [sc]
   | ⟨.tuple [], _⟩ => f []
   | ⟨.tuple es, _⟩ => f (extractSCon es)
@@ -136,7 +186,7 @@ where extractSCon : List Exp → List SCon
 inductive StepExp : State × Exp → State × Exp → Prop
 | tupleNilStep
   : StepExp (s, .tuple []) (s, .tuple [])
-| tupleHdStep (he : StepExp (s, e) (s', e'))
+| tupleHdStep (he₁ : ¬isVal e) (he₂ : StepExp (s, e) (s', e'))
   : StepExp (s, .tuple (e::es)) (s', .tuple (e'::es))
 | tupleTlStep (he : isVal e) (hes : StepExp (s, .tuple es) (s', .tuple es'))
   : StepExp (s, .tuple (e::es)) (s', .tuple (e::es'))
@@ -145,9 +195,9 @@ inductive StepExp : State × Exp → State × Exp → Prop
   -- : StepExp (s, .tuple (e :: es)) (s'', .tuple (e' :: es'))
 | typedStep
   : StepExp (s, .typed e t) (s, e)
-| varStep (h : s.values.find? i = some e)
+| varStep (h : s.find i = some e)
   : StepExp (s, .var i) (s, e.val)
-| appStepL (hf : StepExp (s, f) (s', f'))
+| appStepL (hf : ¬isVal f) (hf : StepExp (s, f) (s', f'))
   : StepExp (s, .app f e) (s', .app f' e)
 | appStepR (hf : isVal f) (he : StepExp (s, e) (s', e'))
   : StepExp (s, .app f e) (s', .app f e')
@@ -164,7 +214,7 @@ inductive StepExp : State × Exp → State × Exp → Prop
 | iteStepF (hb : b = .scon (.bool false))
   : StepExp (s, .ite b t f) (s, f)
 
-def StepsNExp : Nat → State × Exp → State × Exp → Prop
+@[simp] def StepsNExp : Nat → State × Exp → State × Exp → Prop
 | 0 => λ (s, e) (s'', e'') => s = s'' ∧ e = e''
 | 1 => StepExp
 | n+1 => λ (s, e) (s'', e'') =>
@@ -232,7 +282,7 @@ def step (s : State) (exp : Exp) : StepRes (s, exp) :=
   match hexp : exp with
   | .scon sc  => .val (by simp [isVal])
   | .var x    =>
-    match h : s.values.find? x with
+    match h : s.find x with
     | some e => .step s e.val (.varStep h)
     | none   => .var x
   | .tuple [] => .val (by simp [isVal])
@@ -247,7 +297,7 @@ def step (s : State) (exp : Exp) : StepRes (s, exp) :=
         .step s' (.tuple (e::es')) (.tupleTlStep he hes)
     | .var x => .var x
     | .raise exn => .raise exn
-    | .step s' e' he => .step s' (.tuple (e'::es)) (.tupleHdStep he)
+    | .step s' e' he => .step s' (.tuple (e'::es)) (.tupleHdStep (sorry) he)
   | .raise e =>
     match step s e with
     | .var x => .var x
@@ -257,7 +307,7 @@ def step (s : State) (exp : Exp) : StepRes (s, exp) :=
   | .let_in _ _ => .raise "FAIL: Implement"
   | .app f e =>
     match step s f with
-    | .step s' f' h => .step s' (.app f' e) (.appStepL h)
+    | .step s' f' h => .step s' (.app f' e) (.appStepL (sorry) h)
     | .raise exn    => .raise exn
     | .var x        => .var x
     | .val hf        =>
@@ -290,13 +340,35 @@ def step (s : State) (exp : Exp) : StepRes (s, exp) :=
 inductive EvalRes (init : State × Exp)
 | val : (e : {e // isVal e}) → StepsExp init (s, e.val) → EvalRes init
 | var : Ident → StepsExp init (s, e) → EvalRes init
-| raise : Ident → EvalRes init
-deriving Inhabited
+| raise : Ident → StepsExp init (s, e) → EvalRes init
+| nop : StepsExp init init → EvalRes init
+
+instance : Inhabited (EvalRes init) where
+  default := .nop ⟨0, by simp [StepsNExp]⟩
+
+def EvalRes.exp : EvalRes init → Exp
+  | .val e _            => e.val
+  | .var (e := e) _ _   => e
+  | .raise (e := e) _ _ => e
+  | .nop _              => init.2
+
+def EvalRes.state : EvalRes init → State
+  | .val (s := s) _ _   => s
+  | .var (s := s) _ _   => s
+  | .raise (s := s) _ _ => s
+  | .nop _              => init.1
+
+def EvalRes.property : (res : EvalRes init) → StepsExp init (res.state, res.exp)
+  | .val _ h   => h
+  | .var _ h   => h
+  | .raise _ h => h
+  | .nop h     => h
 
 def EvalRes.toString : EvalRes init → String
   | .val e _ => s!"val {e.val}"
   | .var (e:=e) x _ => s!"free-var: {x} in {e}"
-  | .raise x => s!"raise {x}"
+  | .raise x _ => s!"raise {x}"
+  | .nop _   => "nop"
 instance : ToString (EvalRes init) := ⟨EvalRes.toString⟩
 
 partial def eval_acc (s : State) (e : Exp) (acc : StepsExp init (s, e))
@@ -305,7 +377,7 @@ partial def eval_acc (s : State) (e : Exp) (acc : StepsExp init (s, e))
   | .step s' e' h => eval_acc s' e' (trans acc h)
   | .val h => .val ⟨e, h⟩ acc
   | .var x => .var x acc
-  | .raise exn => .raise exn
+  | .raise exn => .raise exn acc
 
 def eval (s : State) (e : Exp) : EvalRes (s, e) :=
   eval_acc s e (⟨0, by simp [StepsNExp]⟩)

@@ -21,11 +21,15 @@ declare_syntax_cat sml_scon
 
 syntax num : sml_scon
 syntax str : sml_scon
+syntax "true" : sml_scon
+syntax "false" : sml_scon
 
 syntax "[sml_scon|" sml_scon "]" : term
 macro_rules
 | `([sml_scon| $n:num ]) => `(SCon.int $n)
 | `([sml_scon| $s:str ]) => `(SCon.str $s)
+| `([sml_scon| true   ]) => `(SCon.bool .true)
+| `([sml_scon| false  ]) => `(SCon.bool .false)
 
 
 

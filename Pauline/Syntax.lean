@@ -4,8 +4,8 @@ open Std
 
 namespace Pauline
 
-def Ident := String
-deriving DecidableEq, Hashable, Repr, ToString, Inhabited
+abbrev Ident := String
+-- deriving DecidableEq, Hashable, Repr, ToString, Inhabited
 
 inductive SCon
 | int (n : Int)
@@ -29,7 +29,7 @@ inductive Pat
 | tuple (ps : List Pat)
 | typed (p : Pat) (ty : Typ)
 | layer (name : Ident) (ty : Option Typ) (p : Pat)
-deriving Repr
+deriving Repr, BEq
 
 instance : CoeHead Pat (List Pat) := ⟨([·])⟩
 
@@ -114,7 +114,7 @@ partial def Exp.toString : Exp → String
       " | ".intercalate (cl.map (fun (p, e) => s!"{p} => {e.toString}"))
     s!"case {e.toString} of {cl_str}"
   | .lam p body => s!"fn {p} => {body.toString}"
-  | .extern f _ => s!"fn ? => extern_{f}"
+  | .extern f _ => s!"@{f}"
 
 partial def Dec.toString : Dec → String
   | .val p e => s!"val {p} = {e.toString}"
@@ -126,6 +126,8 @@ instance : ToString Exp := ⟨Exp.toString⟩
 instance : ToString Dec := ⟨Dec.toString⟩
 instance : Repr Exp     := ⟨(fun e _ => e.toString)⟩
 instance : Repr Dec     := ⟨(fun d _ => d.toString)⟩
+
+instance : BEq Exp := ⟨(·.toString == ·.toString)⟩ -- extremely hacky please fix
 
 def Prog.toString : Prog → String
   | ⟨decls⟩ => "\n\n".intercalate (decls.map Dec.toString)

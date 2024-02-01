@@ -5,7 +5,7 @@ open Std
 
 namespace Pauline
 
-def isVal : Exp → Bool
+@[simp] def isVal : Exp → Bool
 | .scon _
 | .lam _ _
 | .extern _ _
@@ -124,9 +124,7 @@ def subst : Exp → Exp
 | .ite i t e' => .ite (subst i) (subst t) (subst e')
 | .app f e' => .app (subst f) (subst e')
 | .let_in _ _ => panic! "unimplemented"
-| .var i =>
-  let h : x = i ∨ x ≠ i := Classical.em (x = i)
-  if x = i then e else .var i
+| .var i => if x = i then e else .var i
 | .raise e' => .raise (subst e')
 | .extern name f => .extern name f
 
@@ -172,16 +170,18 @@ def test : Exp :=
   ⟨.scon (.int 0), by decide⟩
   (.bind "n")
 
-@[simp] def callExtern (f : List SCon → Exp) : { e // isVal e } → Exp
-  | ⟨.scon sc, _⟩ => f [sc]
-  | ⟨.tuple [], _⟩ => f []
-  | ⟨.tuple es, _⟩ => f (extractSCon es)
-  | _ => panic! s!"Invalid extern call"
-where extractSCon : List Exp → List SCon
+@[simp] private def callExtern.extractSCon : List Exp → List SCon
   | [] => []
   | (.scon sc) :: es => sc :: extractSCon es
   | (.tuple vs) :: es => extractSCon vs ++ extractSCon es
-  | _ => []
+  | _ :: _ => []
+
+@[simp] def callExtern (f : List SCon → Exp) : { e // isVal e } → Exp
+  | ⟨.scon sc, _⟩ => f [sc]
+  | ⟨.tuple [], _⟩ => f []
+  | ⟨.tuple es, _⟩ => f (callExtern.extractSCon es)
+  | _ => .raise Exn.bind
+
 
 inductive StepExp : State × Exp → State × Exp → Prop
 | tupleNilStep

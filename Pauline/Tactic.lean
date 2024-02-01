@@ -3,7 +3,6 @@ import Pauline.Dynamics
 
 namespace Pauline.Tactic
 
-/-
 open Lean Lean.Expr Lean.Meta
 
 elab "sml_eval'" : tactic =>
@@ -46,7 +45,7 @@ def myApply (goal : MVarId) (e : Expr) : MetaM (List MVarId) := do
 elab "sml_step'" : tactic =>
   Lean.Elab.Tactic.withMainContext do
     sorry
--/
+
 
 macro "sml_step_rfl" : tactic =>
   `(tactic| exact ⟨0, by simp⟩)
@@ -54,34 +53,37 @@ macro "sml_step_rfl" : tactic =>
 macro "sml_step_extern" : tactic =>
   `(tactic| ( apply StepExp.externStep
               rfl
-              decide
+              simp
+              simp (config := {decide := .true})
             )
    )
 
 macro "sml_step_apply" : tactic =>
   `(tactic| ( apply StepExp.appStep
               rfl
-              decide
+              simp
+              simp (config := {decide := .true})
             )
    )
 
 macro "sml_step_one" : tactic =>
   `(tactic| ( first | exact StepExp.tupleNilStep
-                    | sml_step_extern
                     | sml_step_apply
+                    | sml_step_extern
                     | exact StepExp.typedStep
                     | apply StepExp.varStep (by constructor)
-                    | apply StepExp.appStepL (by decide)
+                    | apply StepExp.appStepL (by simp)
                     | apply StepExp.appStepR
                     | apply StepExp.raiseStep
                     | exact StepExp.iteStepT rfl
                     | exact StepExp.iteStepF rfl
                     | apply StepExp.iteStepB
-              --  (apply .tupleHdStep; sorry))
+                    | apply StepExp.tupleHdStep (by simp)
+                    | apply StepExp.tupleTlStep (by simp)
             )
    )
 
-macro "sml_step_star" : tactic =>
+macro "sml_step_left_star" : tactic =>
   `(tactic| ( apply StepsExp.trans
               apply Exists.intro 1
               sml_step_one
@@ -89,7 +91,7 @@ macro "sml_step_star" : tactic =>
    )
 
 macro "sml_step" : tactic =>
-  `(tactic| first | sml_step_star
+  `(tactic| first | sml_step_left_star
                   | sml_step_one
                   | sml_step_rfl
    )

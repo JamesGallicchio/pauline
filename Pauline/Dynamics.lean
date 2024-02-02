@@ -5,7 +5,7 @@ open Std
 
 namespace Pauline
 
-@[simp] def isVal : Exp → Bool
+@[simp, reducible] def isVal : Exp → Bool
 | .scon _
 | .lam _ _
 | .extern _ _
@@ -188,7 +188,8 @@ inductive StepExp : State × Exp → State × Exp → Prop
   : StepExp (s, .tuple []) (s, .tuple [])
 | tupleHdStep (he₁ : ¬isVal e) (he₂ : StepExp (s, e) (s', e'))
   : StepExp (s, .tuple (e::es)) (s', .tuple (e'::es))
-| tupleTlStep (he : isVal e) (hes : StepExp (s, .tuple es) (s', .tuple es'))
+| tupleTlStep (he : isVal e) (hes₁ : ¬isVal (.tuple es))
+              (hes₂ : StepExp (s, .tuple es) (s', .tuple es'))
   : StepExp (s, .tuple (e::es)) (s', .tuple (e::es'))
 -- | tupleConsStep {e es}
   -- (h_e : StepExp (s,e) (s',e')) (h_es : StepExp (s', .tuple es) (s'', .tuple es'))
@@ -294,7 +295,7 @@ def step (s : State) (exp : Exp) : StepRes (s, exp) :=
       | .var x => .var x
       | .raise exn => .raise exn
       | .step s' (.tuple es') hes =>
-        .step s' (.tuple (e::es')) (.tupleTlStep he hes)
+        .step s' (.tuple (e::es')) (.tupleTlStep he sorry hes)
     | .var x => .var x
     | .raise exn => .raise exn
     | .step s' e' he => .step s' (.tuple (e'::es)) (.tupleHdStep (sorry) he)

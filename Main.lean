@@ -1,8 +1,6 @@
 import Pauline.Notation
 import Pauline.Statics
 import Pauline.Tactic
-import Mathlib.Tactic
-import Mathlib.Data.String.Lemmas
 
 open Pauline Pauline.Tactic
 
@@ -23,12 +21,7 @@ theorem fact_tc
   : [smlprop|
       program_ctx ⊢ fact : int -> int
     ]
-  := by
-  sorry
-
--- #eval step program_state [sml_exp| if 0 = 0 then 1 else n * fact (n - 1)]
-
-abbrev test := [sml_exp| if true then (if false then 0 else 1) else 2]
+  := by sorry
 
 example : [smlprop|
            program_state ⊢ if 1 = 1 then (if false then 0 else 1) else 2
@@ -42,24 +35,12 @@ example : [smlprop|
     ] := by
   repeat sml_step
 
+set_option maxRecDepth 5000 in
 example : [smlprop|
-           program_state ⊢ fact 1
-      ==>* program_state ⊢ 1
+           program_state ⊢ fact 2
+      ==>* program_state ⊢ 2
     ] := by
-  sml_step
-  sml_step
-  sml_step
-  sml_step
-  sml_step
-  sml_step
-  sml_step
-  sml_step
-  sml_step
-  sml_step
-  sml_step
-  simp
-  sorry
-
+  repeat sml_step
 
 theorem fact_nat_total
   : ∀ n : Nat, ∃ v : Nat,
@@ -73,11 +54,9 @@ theorem fact_nat_total
     apply Exists.intro 1
     repeat sml_step
   case succ n' ih =>
-    let v_ih := ih.choose
     have := ih.choose_spec
-    apply Exists.intro ((n' + 1) * v_ih)
+    apply Exists.intro ((n' + 1) * ih.choose)
     simp
-
     (calc
              (program_state, [sml_exp| fact (↑(n' + 1))])
       _ ==>* (program_state, [sml_exp| ↑(n' + 1) * fact ↑n'])
@@ -90,9 +69,10 @@ theorem fact_nat_total
                 sml_step
                 sml_step
                 sml_step
-                sorry
-                -- sml_step_rfl
-      -- _ ==>* (program_state, [sml_exp| (↑n' + 1) * ↑ih.choose])  := by sorry
-      -- _ ==>* (program_state, [sml_exp| ↑((n' + 1) * ih.choose)]) := by sorry
+                sml_step
+                sml_step
+                sml_step
+                <;> sorry
+      _ ==>* (program_state, [sml_exp| ↑(n' + 1) * ↑ih.choose]) := by sorry
     )
     sorry

@@ -1,5 +1,6 @@
 import Std
 import Pauline.Dynamics
+import Mathlib.Tactic.NormNum
 
 namespace Pauline.Tactic
 
@@ -55,6 +56,7 @@ macro "sml_step_extern" : tactic =>
               rfl
               simp
               simp (config := {decide := .true})
+              norm_num
             )
    )
 
@@ -71,27 +73,36 @@ macro "sml_step_one" : tactic =>
                     | sml_step_apply
                     | sml_step_extern
                     | exact StepExp.typedStep
-                    | apply StepExp.varStep (by constructor)
-                    | apply StepExp.appStepL (by simp)
-                    | apply StepExp.appStepR
+                    | (apply StepExp.varStep (by constructor); simp)
+                    | apply StepExp.appStepL (by decide)
+                    | apply StepExp.appStepR (by decide)
                     | apply StepExp.raiseStep
                     | exact StepExp.iteStepT rfl
                     | exact StepExp.iteStepF rfl
                     | apply StepExp.iteStepB
-                    | apply StepExp.tupleHdStep (by simp)
-                    | apply StepExp.tupleTlStep (by simp)
+                    | apply StepExp.tupleTlStep (by decide) (by decide)
+                    | apply StepExp.tupleHdStep (by decide)
+            )
+   )
+
+macro "sml_step_tuple" : tactic =>
+  `(tactic| ( first | apply StepExp.tupleTlStep (by decide) (by simp)
+                    | apply StepExp.tupleHdStep (by decide)
+              -- try sml_step_one
             )
    )
 
 macro "sml_step_left_star" : tactic =>
   `(tactic| ( apply StepsExp.trans
               apply Exists.intro 1
-              sml_step_one
+              first | sml_step_one
+                    | sml_step_tuple
             )
    )
 
 macro "sml_step" : tactic =>
   `(tactic| first | sml_step_left_star
+                  | sml_step_tuple
                   | sml_step_one
                   | sml_step_rfl
    )

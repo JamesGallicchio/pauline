@@ -13,5 +13,6 @@ lean_exe test {
   root := `Main
 }
 
--- require std from git "https://github.com/leanprover/std4" @ "v4.5.0-rc1"
-require leancolls from git "https://github.com/T-Brick/LeanColls" @ "list-nonempty"
+-- require std from git "https://github.com/leanprover/std4" @ "v4.5.0"
+require leancolls from git "https://github.com/T-Brick/LeanColls" @ "bump-v4.5.0"
+-- require leancolls from git "https://github.com/JamesGallicchio/LeanColls" @ "main"

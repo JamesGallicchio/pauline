@@ -1,5 +1,6 @@
 import Pauline.Notation
 import Pauline.Statics
+import Pauline.Interp
 import Pauline.Tactic
 
 open Pauline Pauline.Tactic
@@ -50,8 +51,7 @@ theorem fact_nat_total
   : ∀ n : Nat, ∃ v : Nat,
     [smlprop|
       env ⊢ fact ↑n ==>* env ⊢ ↑v
-    ]
-  := by
+    ] := by
   intro n
   induction n
   case zero =>
@@ -59,17 +59,20 @@ theorem fact_nat_total
     repeat sml_step
   case succ n' ih =>
     dbg_trace "\nsucc case"
-    have := ih.choose_spec
-    apply Exists.intro (↑(n' + 1) * ↑ih.choose)
+    let ⟨v', ih⟩ := ih
+    apply Exists.intro (↑(n' + 1) * ↑v')
     simp
     (calc
              (env, [sml_exp| fact (↑(n' + 1))])
       _ ==>* (env, [sml_exp| ↑(n' + 1) * (fn n => if n = 0 then 1 else n * fact (n - 1)) ↑n'])
           := by repeat sml_step
 
-      _ ==>* (env, [sml_exp| ↑(n' + 1) * ↑ih.choose])
-          := by sorry
+      _ ==>* (env, [sml_exp| ↑(n' + 1) * ↑v'])
+          := by apply StepsExp.func_ext (by decide)
+                apply StepsExp.tuple_tl (by simp) (by simp)
+                apply StepsExp.tuple_hd (by simp)
+                sorry
 
-      _ ==>* (env, [sml_exp| ↑((n' + 1) * ih.choose)])
+      _ ==>* (env, [sml_exp| ↑((n' + 1) * v')])
           := by repeat sml_step
     )

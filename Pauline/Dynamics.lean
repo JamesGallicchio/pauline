@@ -19,6 +19,7 @@ namespace Pauline
 | .let_in _ _
 | .raise _ => false
 
+/- Maybe move these `Exn`/`Extern` into the Syntax file? -/
 def Exn.bind   : Exp  := .var "Bind"
 def Exn.match  : Exp  := .var "Match"
 def Exn.div    : Exp  := .var "Div"
@@ -58,7 +59,7 @@ def HashMap.beq [Hashable α] [BEq α] [BEq β] (m₁ m₂ : HashMap α β) : Bo
   m₁.toList == m₂.toList
 instance [Hashable α] [BEq α] [BEq β] : BEq (HashMap α β) := ⟨HashMap.beq⟩
 
-structure State where -- not correct for closures : )
+structure State where -- not correct for closures (doesn't include env) : )
   idents  : List Ident
   find : Ident → Option { e // isVal e }
   valid_map : ∀ x ∈ idents, ∃ e, find x = some e
@@ -172,18 +173,27 @@ end
   | ⟨.tuple es, _⟩ => f (callExtern.extractSCon es)
   | _ => .raise Exn.bind
 
+/- Added some duplicate rules, some require that something is not a value. This
+    is useful for writing the tactics bc without that we might step the same
+    thing forever.
 
+  TODO: consider another way of implementing this? maybe we should just have
+    the normal rules and then special theorems that have the additional
+    restrictions and the tactics should only work with those theorems? similar
+    to how the tactics just don't try and apply `tupleNilStep`
+ -/
 inductive StepExp : State × Exp → State × Exp → Prop
 | tupleNilStep
   : StepExp (s, .tuple []) (s, .tuple [])
 | tupleHdStep (he₁ : ¬isVal e) (he₂ : StepExp (s, e) (s', e'))
   : StepExp (s, .tuple (e::es)) (s', .tuple (e'::es))
+| tupleHdStep' (he₂ : StepExp (s, e) (s', e')) -- weaker version
+  : StepExp (s, .tuple (e::es)) (s', .tuple (e'::es))
 | tupleTlStep (he : isVal e) (hes₁ : ¬isVal (.tuple es))
               (hes₂ : StepExp (s, .tuple es) (s', .tuple es'))
   : StepExp (s, .tuple (e::es)) (s', .tuple (e::es'))
--- | tupleConsStep {e es}
-  -- (h_e : StepExp (s,e) (s',e')) (h_es : StepExp (s', .tuple es) (s'', .tuple es'))
-  -- : StepExp (s, .tuple (e :: es)) (s'', .tuple (e' :: es'))
+| tupleTlStep' (he : isVal e) (hes₂ : StepExp (s, .tuple es) (s', .tuple es'))
+  : StepExp (s, .tuple (e::es)) (s', .tuple (e::es'))
 | typedStep
   : StepExp (s, .typed e t) (s, e)
 | varStep (h : s.find i = some e)
@@ -259,119 +269,103 @@ instance : Trans StepsExp StepExp StepsExp where
 instance : Trans StepsExp StepsExp StepsExp where
   trans h1 h2 := h1.trans h2
 
-inductive StepRes (init : State × Exp)
-  | val   : isVal init.2 → StepRes init
-  | var   : Ident → StepRes init -- free variable
-  | raise : Ident → StepRes init
-  | step  : (s : State) → (e : Exp) → StepExp init (s, e) → StepRes init
+/- TODO: these should be iff -/
+theorem StepsNExp.func_ext {f : Exp} (f_val : isVal f) (n : Nat)
+    : ∀ e₁ e₂ s₁ s₂,
+        StepsNExp n (s₁, e₁) (s₂, e₂)
+      → StepsNExp n (s₁, Exp.app f e₁) (s₂, Exp.app f e₂) := by
+  induction n
+  case zero => simp
+  case succ n ih =>
+    intro e₁ e₂ s₁ s₂ h
+    if is_zero : n = 0 then
+      -- apply Iff.intro <;> intro h
+      simp [is_zero] at *
+      exact StepExp.appStepR f_val h
+      -- . cases h
+        -- case appStepL => contradiction
+        -- case appStepR => assumption
+        -- case appStep => sorry
+        -- case externStep => sorry
+    else
+      simp [is_zero] at *
+      match h with
+      | ⟨e', s', h₂, h₃⟩ =>
+        refine ⟨Exp.app f e', s', ?_⟩
+        exact ⟨ih _ _ _ _ h₂, StepExp.appStepR f_val h₃⟩
 
-def StepRes.toString : StepRes init → String
-  | .val _ => "val"
-  | .var x => s!"free-var: {x}"
-  | .raise x => s!"raise {x}"
-  | .step _s' e' _h => s!"stepped: {e'}"
-instance : ToString (StepRes init) := ⟨StepRes.toString⟩
+-- TODO: likewise should probs be iff
+theorem StepsExp.func_ext {f : Exp} (f_val : isVal f)
+    : ∀ e₁ e₂ s₁ s₂,
+        StepsExp (s₁, e₁) (s₂, e₂)
+      → StepsExp (s₁, Exp.app f e₁) (s₂, Exp.app f e₂) := by
+  intro e₁ e₂ s₁ s₂ h
+  cases h; next n h =>
+  exact ⟨n, StepsNExp.func_ext (f_val := f_val) n e₁ e₂ s₁ s₂ h⟩
 
-def step (s : State) (exp : Exp) : StepRes (s, exp) :=
-  match hexp : exp with
-  | .scon sc  => .val (by simp [isVal])
-  | .var x    =>
-    match h : s.find x with
-    | some e => .step s e.val (.varStep h)
-    | none   => .var x
-  | .tuple [] => .val (by simp [isVal])
-  | .tuple (e :: es) =>
-    match step s e with
-    | .val he =>
-      match step s (.tuple es) with
-      | .val hes => .val (by simp [isVal]; exact ⟨he, hes⟩)
-      | .var x => .var x
-      | .raise exn => .raise exn
-      | .step s' (.tuple es') hes =>
-        .step s' (.tuple (e::es')) (.tupleTlStep he sorry hes)
-    | .var x => .var x
-    | .raise exn => .raise exn
-    | .step s' e' he => .step s' (.tuple (e'::es)) (.tupleHdStep (sorry) he)
-  | .raise e =>
-    match step s e with
-    | .var x => .var x
-    | .raise exn => .raise exn
-    | .step s' e' h => .step s' (.raise e') (.raiseStep h)
-    | _ => .raise "INVALID"
-  | .let_in _ _ => .raise "FAIL: Implement"
-  | .app f e =>
-    match step s f with
-    | .step s' f' h => .step s' (.app f' e) (.appStepL (sorry) h)
-    | .raise exn    => .raise exn
-    | .var x        => .var x
-    | .val hf        =>
-      match step s e with
-      | .step s' e' he => .step s' (.app f e') (.appStepR hf he)
-      | .raise exn     => .raise exn
-      | .var x         => .var x
-      | .val he =>
-          match f with
-          | .lam p body =>
-            .step s (substPat body ⟨e, he⟩ p) (.appStep he rfl)
-          | .extern _ exe =>
-            .step s (callExtern exe ⟨e, he⟩) (.externStep he rfl)
-          | _ => .raise s!"FAIL: SOMETHING WENT WRONG {Exp.app f e}"
-  | .typed e τ => .step s e .typedStep
-  | .ite b t f =>
-    match b with
-    | .scon (.bool true)  => .step s t (.iteStepT rfl)
-    | .scon (.bool false) => .step s f (.iteStepF rfl)
-    | _ =>
-      match step s b with
-      | .step s' b' h => .step s' (.ite b' t f) (.iteStepB sorry)
-      | .var x => .var x
-      | .raise exn => .raise exn
-      | _ => .raise s!"FAIL: SOMETHING WENT WRONG ITE {b}"
-  | .case e cl => .raise "FAIL: Implement"
-  | .lam p body => .val (by simp [isVal])
-  | .extern _ exe => .val (by simp [isVal])
 
-inductive EvalRes (init : State × Exp)
-| val : (e : {e // isVal e}) → StepsExp init (s, e.val) → EvalRes init
-| var : Ident → StepsExp init (s, e) → EvalRes init
-| raise : Ident → StepsExp init (s, e) → EvalRes init
-| nop : StepsExp init init → EvalRes init
+theorem StepsNExp.tuple_hd {es : List Exp} (n : Nat) (e₁ : Exp)
+    (e₁_not_val : ¬isVal e₁)
+    : ∀ e₂ s₁ s₂,
+        StepsNExp n (s₁, e₁) (s₂, e₂)
+      → StepsNExp n (s₁, .tuple (e₁ :: es)) (s₂, .tuple (e₂ :: es)) := by
+  induction n
+  case zero => simp
+  case succ n ih =>
+    intro e₂ s₁ s₂
+    if is_zero : n = 0 then
+      simp [is_zero]
+      exact StepExp.tupleHdStep e₁_not_val
+      -- refine ⟨..., ?_⟩
+      -- intro h; cases h <;> (first | assumption | contradiction)
+    else
+      intro h
+      simp [is_zero]
+      simp [is_zero] at ih h
+      match h with
+      | ⟨e', s', h₂, h₃⟩ =>
+        refine ⟨.tuple (e' :: es), s', ?_⟩
+        exact ⟨ih _ _ _ h₂, StepExp.tupleHdStep' h₃⟩
 
-instance : Inhabited (EvalRes init) where
-  default := .nop ⟨0, by simp [StepsNExp]⟩
+theorem StepsExp.tuple_hd {es : List Exp} {e₁ : Exp} (e₁_not_val : ¬isVal e₁)
+    : ∀ e₂ s₁ s₂,
+        StepsExp (s₁, e₁) (s₂, e₂)
+      → StepsExp (s₁, .tuple (e₁ :: es)) (s₂, .tuple (e₂ :: es)) := by
+  intro e₂ s₁ s₂ h
+  cases h; next n h =>
+  exact ⟨n, StepsNExp.tuple_hd n e₁ e₁_not_val e₂ s₁ s₂ h⟩
 
-def EvalRes.exp : EvalRes init → Exp
-  | .val e _            => e.val
-  | .var (e := e) _ _   => e
-  | .raise (e := e) _ _ => e
-  | .nop _              => init.2
 
-def EvalRes.state : EvalRes init → State
-  | .val (s := s) _ _   => s
-  | .var (s := s) _ _   => s
-  | .raise (s := s) _ _ => s
-  | .nop _              => init.1
+theorem StepsNExp.tuple_tl (n : Nat) (e : Exp) (es₁ : List Exp)
+    (e_val : isVal e) (es₁_not_val : ¬isVal (.tuple es₁))
+    : ∀ es₂ s₁ s₂,
+        StepsNExp n (s₁, .tuple es₁) (s₂, .tuple es₂)
+      → StepsNExp n (s₁, .tuple (e :: es₁)) (s₂, .tuple (e :: es₂)) := by
+  induction n
+  case zero => simp
+  case succ n ih =>
+    intro es₂ s₁ s₂
+    if is_zero : n = 0 then
+      simp [is_zero]
+      exact StepExp.tupleTlStep e_val es₁_not_val
+    else
+      intro h
+      simp [is_zero]
+      simp [is_zero] at ih h
+      match h with
+      | ⟨.tuple es', s', h₂, h₃⟩ =>
+        refine ⟨.tuple (e :: es'), s', ?_⟩
+        exact ⟨ih _ _ _ h₂, StepExp.tupleTlStep' e_val h₃⟩
+      | ⟨_, _, _, _⟩ =>
+        -- todo we need theorems to reason about tuples staying tuples
+        -- just gonna sorry for now
+        sorry
 
-def EvalRes.property : (res : EvalRes init) → StepsExp init (res.state, res.exp)
-  | .val _ h   => h
-  | .var _ h   => h
-  | .raise _ h => h
-  | .nop h     => h
-
-def EvalRes.toString : EvalRes init → String
-  | .val e _ => s!"val {e.val}"
-  | .var (e:=e) x _ => s!"free-var: {x} in {e}"
-  | .raise x _ => s!"raise {x}"
-  | .nop _   => "nop"
-instance : ToString (EvalRes init) := ⟨EvalRes.toString⟩
-
-partial def eval_acc (s : State) (e : Exp) (acc : StepsExp init (s, e))
-    : EvalRes init  :=
-  match step s e with
-  | .step s' e' h => eval_acc s' e' (trans acc h)
-  | .val h => .val ⟨e, h⟩ acc
-  | .var x => .var x acc
-  | .raise exn => .raise exn acc
-
-def eval (s : State) (e : Exp) : EvalRes (s, e) :=
-  eval_acc s e (⟨0, by simp [StepsNExp]⟩)
+theorem StepsExp.tuple_tl {e : Exp} {es₁ : List Exp}
+    (e_val : isVal e) (es₁_not_val : ¬isVal (.tuple es₁))
+    : ∀ es₂ s₁ s₂,
+        StepsExp (s₁, .tuple es₁) (s₂, .tuple es₂)
+      → StepsExp (s₁, .tuple (e :: es₁)) (s₂, .tuple (e :: es₂)) := by
+  intro es₂ s₁ s₂ h
+  cases h; next n h =>
+  exact ⟨n, StepsNExp.tuple_tl n e es₁ e_val es₁_not_val es₂ s₁ s₂ h⟩

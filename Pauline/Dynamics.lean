@@ -23,34 +23,34 @@ def Exn.bind   : Exp  := .var "Bind"
 def Exn.match  : Exp  := .var "Match"
 def Exn.div    : Exp  := .var "Div"
 
-def Extern.add : Exp :=
+abbrev Extern.add : Exp :=
   .extern "+" (fun | [.int x, .int y] => .scon (.int (x + y))
                    | _ => panic! "Extern TC Failure" )
-def Extern.sub : Exp :=
+abbrev Extern.sub : Exp :=
   .extern "-" (fun | [.int x, .int y] => .scon (.int (x - y))
                    | _ => panic! "Extern TC Failure" )
-def Extern.mul : Exp :=
+abbrev Extern.mul : Exp :=
   .extern "*" (fun | [.int x, .int y] => .scon (.int (x * y))
                    | _ => panic! "Extern TC Failure" )
-def Extern.div : Exp :=
+abbrev Extern.div : Exp :=
   .extern "div" (fun | [.int x, .int y] => .scon (.int (x / y))
                      | _ => panic! "Extern TC Failure" )
-def Extern.eq : Exp :=
+abbrev Extern.eq : Exp :=
   .extern "=" (fun | [.int x, .int y] => .scon (.bool (x = y))
                    | _ => panic! "Extern TC Failure" )
-def Extern.neq : Exp :=
+abbrev Extern.neq : Exp :=
   .extern "<>" (fun | [.int x, .int y] => .scon (.bool (x ≠ y))
                     | _ => panic! "Extern TC Failure" )
-def Extern.lt : Exp :=
+abbrev Extern.lt : Exp :=
   .extern "<" (fun | [.int x, .int y] => .scon (.bool (x < y))
                    | _ => panic! "Extern TC Failure" )
-def Extern.gt : Exp :=
+abbrev Extern.gt : Exp :=
   .extern ">" (fun | [.int x, .int y] => .scon (.bool (x > y))
                    | _ => panic! "Extern TC Failure" )
-def Extern.le : Exp :=
+abbrev Extern.le : Exp :=
   .extern "<=" (fun | [.int x, .int y] => .scon (.bool (x ≤ y))
                     | _ => panic! "Extern TC Failure" )
-def Extern.ge : Exp :=
+abbrev Extern.ge : Exp :=
   .extern "<=" (fun | [.int x, .int y] => .scon (.bool (x ≥ y))
                     | _ => panic! "Extern TC Failure" )
 
@@ -124,9 +124,9 @@ def subst : Exp → Exp
 | .ite i t e' => .ite (subst i) (subst t) (subst e')
 | .app f e' => .app (subst f) (subst e')
 | .let_in _ _ => panic! "unimplemented"
+| .extern name f => .extern name f
 | .var i => if x = i then e else .var i
 | .raise e' => .raise (subst e')
-| .extern name f => .extern name f
 
 @[simp, reducible]
 def substList : List Exp → List Exp
@@ -159,16 +159,6 @@ end
       | _ => .raise Exn.bind
     else .raise Exn.bind
 
-def test : Exp :=
-  Exp.ite
-    (Exp.app (.var "=") (.tuple [.var "n", .scon (.int 0)]))
-    (Exp.scon (.int 1))
-    (Exp.scon (.int 2))
-
-#eval substPat
-  test
-  ⟨.scon (.int 0), by decide⟩
-  (.bind "n")
 
 @[simp] private def callExtern.extractSCon : List Exp → List SCon
   | [] => []
@@ -222,6 +212,9 @@ inductive StepExp : State × Exp → State × Exp → Prop
   ∃ e' s', StepsNExp n (s,e) (s', e') ∧ StepExp (s', e') (s'', e'')
 
 def StepsExp : State × Exp → State × Exp → Prop := (∃ n, StepsNExp n · ·)
+
+theorem StepsExp.zero_step : ∀ e s, StepsExp (s, e) (s, e) := by
+  intro e s; apply Exists.intro 0; simp
 
 theorem StepsExp.trans (h1 : StepsExp x y) (h2 : StepsExp y z)
   : StepsExp x z

@@ -49,7 +49,7 @@ elab "sml_step'" : tactic =>
 
 
 macro "sml_step_rfl" : tactic =>
-  `(tactic| exact ⟨0, by simp⟩)
+  `(tactic| apply StepsExp.zero_step)
 
 macro "sml_step_extern" : tactic =>
   `(tactic| ( apply StepExp.externStep
@@ -65,29 +65,30 @@ macro "sml_step_apply" : tactic =>
               rfl
               simp
               simp (config := {decide := .true})
+              norm_num
             )
    )
 
 macro "sml_step_one" : tactic =>
-  `(tactic| ( first | exact StepExp.tupleNilStep
-                    | sml_step_apply
-                    | sml_step_extern
-                    | exact StepExp.typedStep
-                    | (apply StepExp.varStep (by constructor); simp)
-                    | apply StepExp.appStepL (by decide)
-                    | apply StepExp.appStepR (by decide)
-                    | apply StepExp.raiseStep
-                    | exact StepExp.iteStepT rfl
-                    | exact StepExp.iteStepF rfl
-                    | apply StepExp.iteStepB
-                    | apply StepExp.tupleTlStep (by decide) (by decide)
-                    | apply StepExp.tupleHdStep (by decide)
+  `(tactic| ( first | exact StepExp.tupleNilStep; dbg_trace "step: unit"
+                    | sml_step_apply; dbg_trace "step: apply"
+                    | sml_step_extern; dbg_trace "step: extern"
+                    | exact StepExp.typedStep; dbg_trace "step: typed"
+                    | (apply StepExp.varStep (by constructor); simp); dbg_trace "step: var"
+                    | apply StepExp.appStepL (by decide); dbg_trace "step: app left"
+                    | apply StepExp.appStepR (by decide); dbg_trace "step: app right"
+                    | apply StepExp.raiseStep; dbg_trace "step: raise"
+                    | exact StepExp.iteStepT rfl; dbg_trace "step: ite true"
+                    | exact StepExp.iteStepF rfl; dbg_trace "step: ite false"
+                    | apply StepExp.iteStepB; dbg_trace "step: ite cond"
             )
    )
 
 macro "sml_step_tuple" : tactic =>
-  `(tactic| ( first | apply StepExp.tupleTlStep (by decide) (by simp)
-                    | apply StepExp.tupleHdStep (by decide)
+  `(tactic| ( first | apply StepExp.tupleTlStep (by rewrite [isVal]; decide) (by simp)
+                      dbg_trace "step: tuple tl"
+                    | apply StepExp.tupleHdStep (by rewrite [isVal]; decide)
+                      dbg_trace "step: tuple hd"
               -- try sml_step_one
             )
    )
@@ -101,10 +102,10 @@ macro "sml_step_left_star" : tactic =>
    )
 
 macro "sml_step" : tactic =>
-  `(tactic| first | sml_step_left_star
+  `(tactic| first | sml_step_rfl
+                  | sml_step_left_star
                   | sml_step_tuple
                   | sml_step_one
-                  | sml_step_rfl
    )
 
 -- todo make SML tactic specific syntax category

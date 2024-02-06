@@ -140,6 +140,10 @@ macro_rules
 | `([sml_exp_tuple| $e:sml_exp ]) =>
   `([[sml_exp| $e ]])
 
+/- Hard coding the operators to give the specific extern implementation
+    kinda need this to be able to do proofs reasonably, but is incorrect
+    when shadowing these operators
+-/
 macro_rules
 | `([sml_exp| $id:sml_vid ]) => `(Exp.var [sml_vid| $id ])
 | `([sml_exp| $sc:sml_scon ]) => `(Exp.scon [sml_scon| $sc ])
@@ -153,23 +157,35 @@ macro_rules
   `(Exp.lam [sml_pat| $p ] [sml_exp| $e ])
 
 | `([sml_exp| $e1 = $e2 ]) =>
-  `(Exp.app (Exp.var "=") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  -- `(Exp.app (Exp.var "=") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.eq  ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+| `([sml_exp| $e1 <> $e2 ]) =>
+  -- `(Exp.app (Exp.var "<>") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.neq ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 < $e2 ]) =>
-  `(Exp.app (Exp.var "<") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  -- `(Exp.app (Exp.var "<") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.lt  ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 > $e2 ]) =>
-  `(Exp.app (Exp.var ">") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  -- `(Exp.app (Exp.var ">") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.gt  ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 <= $e2 ]) =>
-  `(Exp.app (Exp.var "<=") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  -- `(Exp.app (Exp.var "<=") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.le  ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 >= $e2 ]) =>
-  `(Exp.app (Exp.var ">=") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  -- `(Exp.app (Exp.var ">=") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.ge  ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 + $e2 ]) =>
-  `(Exp.app (Exp.var "+") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  -- `(Exp.app (Exp.var "+") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.add ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 - $e2 ]) =>
-  `(Exp.app (Exp.var "-") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  -- `(Exp.app (Exp.var "-") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.sub ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 * $e2 ]) =>
-  `(Exp.app (Exp.var "*") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  -- `(Exp.app (Exp.var "*") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.mul ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 | `([sml_exp| $e1 div $e2 ]) =>
-  `(Exp.app (Exp.var "div") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  -- `(Exp.app (Exp.var "div") (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
+  `(Exp.app (Extern.div ) (Exp.tuple [[sml_exp| $e1], [sml_exp| $e2 ]]))
 
 | `([sml_exp| ↑$e:term ]) => `(↑$e)
 

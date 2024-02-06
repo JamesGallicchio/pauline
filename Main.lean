@@ -12,7 +12,7 @@ def fact := [sml|
 ]
 
 def program_ctx : Context := sorry
-abbrev program_state : State := -- todo automate
+abbrev env : State := -- todo automate
   let init : State := default
   init.insert "fact"
     ⟨[sml_exp| fn n => if n = 0 then 1 else n * fact (n - 1)], by decide⟩
@@ -25,23 +25,23 @@ theorem fact_tc
 
 
 example : [smlprop|
-           program_state ⊢ if 1 = 1 then (if false then 0 else 1) else 2
-      ==>* program_state ⊢ 1
+           env ⊢ if 1 = 1 then (if false then 0 else 1) else 2
+      ==>* env ⊢ 1
     ] := by
   repeat sml_step
 
 
 example : [smlprop|
-           program_state ⊢ if 1 = 1 then 1 else 0
-      ==>* program_state ⊢ 1
+           env ⊢ if 1 = 1 then 1 else 0
+      ==>* env ⊢ 1
     ] := by
   repeat sml_step
 
 
 set_option maxRecDepth 5000 in
 example : [smlprop|
-           program_state ⊢ fact 2
-      ==>* program_state ⊢ 2
+           env ⊢ fact 2
+      ==>* env ⊢ 2
     ] := by
   repeat sml_step
 
@@ -49,7 +49,7 @@ example : [smlprop|
 theorem fact_nat_total
   : ∀ n : Nat, ∃ v : Nat,
     [smlprop|
-      program_state ⊢ fact ↑n ==>* program_state ⊢ ↑v
+      env ⊢ fact ↑n ==>* env ⊢ ↑v
     ]
   := by
   intro n
@@ -63,13 +63,13 @@ theorem fact_nat_total
     apply Exists.intro (↑(n' + 1) * ↑ih.choose)
     simp
     (calc
-             (program_state, [sml_exp| fact (↑(n' + 1))])
-      _ ==>* (program_state, [sml_exp| ↑(n' + 1) * (fn n => if n = 0 then 1 else n * fact (n - 1)) ↑n'])
+             (env, [sml_exp| fact (↑(n' + 1))])
+      _ ==>* (env, [sml_exp| ↑(n' + 1) * (fn n => if n = 0 then 1 else n * fact (n - 1)) ↑n'])
           := by repeat sml_step
 
-      _ ==>* (program_state, [sml_exp| ↑(n' + 1) * ↑ih.choose])
+      _ ==>* (env, [sml_exp| ↑(n' + 1) * ↑ih.choose])
           := by sorry
 
-      _ ==>* (program_state, [sml_exp| ↑((n' + 1) * ih.choose)])
+      _ ==>* (env, [sml_exp| ↑((n' + 1) * ih.choose)])
           := by repeat sml_step
     )

@@ -38,10 +38,10 @@ def step (s : State) (exp : Exp) : StepRes (s, exp) :=
       | .var x => .var x
       | .raise exn => .raise exn
       | .step s' (.tuple es') hes =>
-        .step s' (.tuple (e::es')) (.tupleTlStep he sorry hes)
+        .step s' (.tuple (e::es')) (.safeTupleTlStep he sorry hes)
     | .var x => .var x
     | .raise exn => .raise exn
-    | .step s' e' he => .step s' (.tuple (e'::es)) (.tupleHdStep (sorry) he)
+    | .step s' e' he => .step s' (.tuple (e'::es)) (.safeTupleHdStep (sorry) he)
   | .raise e =>
     match step s e with
     | .var x => .var x

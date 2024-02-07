@@ -104,6 +104,7 @@ abbrev State.NonAdversarial (s : State) : Prop :=
   ∧ (s.find "<="  = some ⟨Extern.le , by decide⟩)
   ∧ (s.find ">="  = some ⟨Extern.ge , by decide⟩)
 
+
 def Pat.bindsIdent (i : Ident) : Pat → Bool
 | wild            => false
 | bind i'         => i = i'
@@ -173,26 +174,16 @@ end
   | ⟨.tuple es, _⟩ => f (callExtern.extractSCon es)
   | _ => .raise Exn.bind
 
-/- Added some duplicate rules, some require that something is not a value. This
-    is useful for writing the tactics bc without that we might step the same
-    thing forever.
 
-  TODO: consider another way of implementing this? maybe we should just have
-    the normal rules and then special theorems that have the additional
-    restrictions and the tactics should only work with those theorems? similar
-    to how the tactics just don't try and apply `tupleNilStep`
+/- TODO: consider removing some of the `isVal` requirements and making "safe"
+    theorems like done for tuples
  -/
 inductive StepExp : State × Exp → State × Exp → Prop
 | tupleNilStep
   : StepExp (s, .tuple []) (s, .tuple [])
 | tupleHdStep (he₁ : ¬isVal e) (he₂ : StepExp (s, e) (s', e'))
   : StepExp (s, .tuple (e::es)) (s', .tuple (e'::es))
-| tupleHdStep' (he₂ : StepExp (s, e) (s', e')) -- weaker version
-  : StepExp (s, .tuple (e::es)) (s', .tuple (e'::es))
-| tupleTlStep (he : isVal e) (hes₁ : ¬isVal (.tuple es))
-              (hes₂ : StepExp (s, .tuple es) (s', .tuple es'))
-  : StepExp (s, .tuple (e::es)) (s', .tuple (e::es'))
-| tupleTlStep' (he : isVal e) (hes₂ : StepExp (s, .tuple es) (s', .tuple es'))
+| tupleTlStep (he : isVal e) (hes : StepExp (s, .tuple es) (s', .tuple es'))
   : StepExp (s, .tuple (e::es)) (s', .tuple (e::es'))
 | typedStep
   : StepExp (s, .typed e t) (s, e)
@@ -215,10 +206,26 @@ inductive StepExp : State × Exp → State × Exp → Prop
 | iteStepF (hb : b = .scon (.bool false))
   : StepExp (s, .ite b t f) (s, f)
 
+
+/- These theorems are wrappers that make using tactics more safe
+    (prevents getting stuck/not making progress)
+   TODO: should more be moved over?
+ -/
+theorem StepExp.safeTupleHdStep (he₁ : ¬isVal e)
+    (he₂ : StepExp (s, e) (s', e'))
+    : StepExp (s, .tuple (e::es)) (s', .tuple (e'::es)) :=
+  .tupleHdStep he₁ he₂
+
+theorem StepExp.safeTupleTlStep (he : isVal e) (hes₁ : ¬isVal (.tuple es))
+    (hes₂ : StepExp (s, .tuple es) (s', .tuple es'))
+    : StepExp (s, .tuple (e::es)) (s', .tuple (e::es')) :=
+  .tupleTlStep he hes₂
+
+
 @[simp] def StepsNExp : Nat → State × Exp → State × Exp → Prop
-| 0 => λ (s, e) (s'', e'') => s = s'' ∧ e = e''
+| 0 => fun (s, e) (s'', e'') => s = s'' ∧ e = e''
 | 1 => StepExp
-| n+1 => λ (s, e) (s'', e'') =>
+| n+1 => fun (s, e) (s'', e'') =>
   ∃ e' s', StepsNExp n (s,e) (s', e') ∧ StepExp (s', e') (s'', e'')
 
 def StepsExp : State × Exp → State × Exp → Prop := (∃ n, StepsNExp n · ·)
@@ -269,6 +276,117 @@ instance : Trans StepsExp StepExp StepsExp where
 instance : Trans StepsExp StepsExp StepsExp where
   trans h1 h2 := h1.trans h2
 
+/- Evaluation is deterministic, i.e. there is at most one evaluation path -/
+theorem StepExp.determ
+    (h₁ : StepExp (s, e) (s₁, e₁))
+    (h₂ : StepExp (s, e) (s₂, e₂))
+    : s₁ = s₂ ∧ e₁ = e₂ := by
+  cases h₁ with
+  | tupleNilStep => cases h₂; exact ⟨by rfl, by rfl⟩
+
+  | tupleHdStep he₁ he₁' =>
+    cases h₂ with
+    | tupleHdStep he₂ he₂' =>
+      have := StepExp.determ he₁' he₂'
+      simp at this
+      simp [this]
+    | tupleTlStep he₂ hes₂ =>
+      rw [he₂] at he₁
+      contradiction
+
+  | tupleTlStep he₁ hes₁ =>
+    cases h₂ with
+    | tupleHdStep he₂ he₂' =>
+      rw [he₁] at he₂
+      contradiction
+    | tupleTlStep he₂ hes₂ =>
+      have := StepExp.determ hes₁ hes₂
+      simp at this
+      simp [this]
+
+  | typedStep => cases h₂; exact ⟨by rfl, by rfl⟩
+
+  | varStep h₁' =>
+    cases h₂ with
+    | varStep h₂' =>
+      simp only [h₂', Option.some.injEq] at h₁'
+      simp only [h₁', and_self]
+
+  | appStepL hf₁ hf₁' =>
+    cases h₂ with
+    | appStepL hf₂ hf₂' => simp [StepExp.determ hf₁' hf₂']
+    | appStepR hf₂ he₂  => simp [hf₂] at hf₁
+    | appStep    => simp at hf₁
+    | externStep => simp at hf₁
+
+  | appStepR hf₁ he₁ =>
+    cases h₂ with
+    | appStepL hf₂ hf₂' => simp [hf₂] at hf₁
+    | appStepR hf₂ he₂  => simp [StepExp.determ he₁ he₂]
+    | appStep    => sorry
+    | externStep => sorry
+
+  | appStep he₁ he₁' =>
+    cases h₂ with
+    | appStepL hf₂ hf₂' => simp at hf₂
+    | appStepR hf₂ he₂ =>
+      sorry
+    | appStep he₂ he₂' => rw [←he₂'] at he₁'; simp [he₁']
+
+  | raiseStep h₁' =>
+    cases h₂ with
+    | raiseStep h₂' => simp [StepExp.determ h₁' h₂']
+
+  | externStep he₁ he₁' =>
+    cases h₂ with
+    | appStepL hf₂ hf₂' => simp only [isVal._eq_3, not_true_eq_false] at hf₂ 
+    | appStepR hf₂ he₂ =>
+      sorry
+    | externStep he₂ he₂' => rw [←he₂'] at he₁'; simp [he₁']
+
+  | iteStepB h₁' =>
+    cases h₂ with
+    | iteStepB h₂' => simp [StepExp.determ h₁' h₂']
+    | iteStepT h₂' => rw [h₂'] at h₁'; cases h₁'
+    | iteStepF h₂' => rw [h₂'] at h₁'; cases h₁'
+
+  | iteStepT h₁' =>
+    cases h₂ with
+    | iteStepB h₂' => rw [h₁'] at h₂'; cases h₂'
+    | iteStepT h₂' => exact ⟨by rfl, by rfl⟩
+    | iteStepF h₂' => simp [h₁'] at h₂'
+
+  | iteStepF h₁' =>
+    cases h₂ with
+    | iteStepB h₂' => rw [h₁'] at h₂'; cases h₂'
+    | iteStepT h₂' => simp [h₁'] at h₂'
+    | iteStepF h₂' => exact ⟨by rfl, by rfl⟩
+decreasing_by sorry
+
+/- Stepping formulation but moving backwards which can be useful for proofs -/
+@[simp] def BackStepsNExp : Nat → State × Exp → State × Exp → Prop
+| 0 => fun (s, e) (s'', e'') => s = s'' ∧ e = e''
+| n+1 => fun (s, e) (s'', e'') =>
+  ∃ e' s', StepExp (s, e) (s', e') ∧ BackStepsNExp n (s',e') (s'', e'')
+
+theorem BackStepsNExp.iff_steps
+    : BackStepsNExp n (s₁, e₁) (s₂, e₂) ↔ StepsNExp n (s₁, e₁) (s₂, e₂) := by
+  induction n generalizing s₁ e₁ s₂ e₂
+  case zero => simp
+  case succ n' ih =>
+    simp
+    apply Iff.intro <;> intro h
+    . let ⟨e', s', h'⟩ := h
+      have := ih.mp h'.right
+      sorry
+    . cases n'
+      case zero => exact ⟨e₂, s₂, h, rfl, rfl⟩
+      case succ n'' =>
+        let ⟨e', s', h'⟩ := h
+        have := ih.mpr h'.left
+        simp at this
+        sorry
+
 /- TODO: these should be iff -/
 theorem StepsNExp.func_ext {f : Exp} (f_val : isVal f) (n : Nat)
     : ∀ e₁ e₂ s₁ s₂,
@@ -315,7 +433,7 @@ theorem StepsNExp.tuple_hd {es : List Exp} (n : Nat) (e₁ : Exp)
     intro e₂ s₁ s₂
     if is_zero : n = 0 then
       simp [is_zero]
-      exact StepExp.tupleHdStep e₁_not_val
+      exact StepExp.safeTupleHdStep e₁_not_val
       -- refine ⟨..., ?_⟩
       -- intro h; cases h <;> (first | assumption | contradiction)
     else
@@ -325,7 +443,7 @@ theorem StepsNExp.tuple_hd {es : List Exp} (n : Nat) (e₁ : Exp)
       match h with
       | ⟨e', s', h₂, h₃⟩ =>
         refine ⟨.tuple (e' :: es), s', ?_⟩
-        exact ⟨ih _ _ _ h₂, StepExp.tupleHdStep' h₃⟩
+        exact ⟨ih _ _ _ h₂, StepExp.tupleHdStep sorry h₃⟩
 
 theorem StepsExp.tuple_hd {es : List Exp} {e₁ : Exp} (e₁_not_val : ¬isVal e₁)
     : ∀ e₂ s₁ s₂,
@@ -347,7 +465,7 @@ theorem StepsNExp.tuple_tl (n : Nat) (e : Exp) (es₁ : List Exp)
     intro es₂ s₁ s₂
     if is_zero : n = 0 then
       simp [is_zero]
-      exact StepExp.tupleTlStep e_val es₁_not_val
+      exact StepExp.safeTupleTlStep e_val es₁_not_val
     else
       intro h
       simp [is_zero]
@@ -355,7 +473,7 @@ theorem StepsNExp.tuple_tl (n : Nat) (e : Exp) (es₁ : List Exp)
       match h with
       | ⟨.tuple es', s', h₂, h₃⟩ =>
         refine ⟨.tuple (e :: es'), s', ?_⟩
-        exact ⟨ih _ _ _ h₂, StepExp.tupleTlStep' e_val h₃⟩
+        exact ⟨ih _ _ _ h₂, StepExp.tupleTlStep e_val h₃⟩
       | ⟨_, _, _, _⟩ =>
         -- todo we need theorems to reason about tuples staying tuples
         -- just gonna sorry for now
@@ -369,3 +487,82 @@ theorem StepsExp.tuple_tl {e : Exp} {es₁ : List Exp}
   intro es₂ s₁ s₂ h
   cases h; next n h =>
   exact ⟨n, StepsNExp.tuple_tl n e es₁ e_val es₁_not_val es₂ s₁ s₂ h⟩
+
+
+theorem StepsNExp.from_scon (n : Nat)
+    : ∀ s' e, StepsNExp n (s, .scon sc) (s', e) → s = s' ∧ e = .scon sc := by
+  induction n
+  case zero => intro s e h; simp at h; simp [h]
+  case succ n' ih =>
+    intro s e h
+    if is_zero : n' = 0 then
+      simp [is_zero] at *
+      cases h
+    else
+      simp at h
+      let ⟨_, _, hl, hr⟩ := h
+      simp [ih _ _ hl] at hr
+      cases hr
+
+theorem StepsExp.from_scon
+    : ∀ s' e, StepsExp (s, .scon sc) (s', e) → s = s' ∧ e = .scon sc := by
+  intro s' e h
+  cases h; next n h =>
+  exact StepsNExp.from_scon n s' e h
+
+def Valuable : State × Exp → Prop :=
+  fun (s₁, e) => ∃ v s₂, isVal v ∧ StepsExp (s₁, e) (s₂, v)
+
+theorem Valuable.value : isVal e → Valuable (s, e) := by
+  intro h; simp [Valuable]; refine ⟨e, h, s, 0, by simp⟩
+
+theorem StepsExp.toValuable
+    (h : StepsExp (s, e) (s', .scon (.int ↑n)))
+    : Valuable (s, e) := by
+  exact ⟨.scon (.int ↑n), s', by simp, h⟩
+
+theorem Valuable.split
+    (h₁ : Valuable (s₁, e₁))
+    (h₂ : StepsExp (s₁, e₁) (s₂, e₂))
+    : Valuable (s₂, e₂) := by
+  sorry
+
+
+theorem BackStepsNExp.split_int
+    (h₁ : BackStepsNExp n (s₁, e₁) (s₃, .scon (.int ↑v)))
+    (h₂ : BackStepsNExp m (s₁, e₁) (s₂, e₂))
+    : StepsExp (s₂, e₂) (s₃, .scon (.int ↑v)) := by
+  induction m generalizing e₁ s₁ n
+  case zero =>
+    simp at h₂
+    simp [h₂] at *
+    exact ⟨n, BackStepsNExp.iff_steps.mp h₁⟩
+  case succ m' ih₂ =>
+    cases n
+    case zero =>
+      simp at h₁ h₂
+      simp [h₁] at h₂
+      let ⟨e₂', s₂', h₂'⟩ := h₂
+      have := StepsExp.from_scon _ _ ⟨1, h₂'.left⟩
+      simp [this] at *
+      have := BackStepsNExp.iff_steps.mp h₂'.right
+      simp [StepsExp.from_scon _ _ ⟨m', this⟩] at *
+      apply ih₂ h₂'.right h₂'.right
+    case succ n' =>
+      simp at h₁ h₂
+      let ⟨e₁', s₁', h₁'⟩ := h₁
+      let ⟨e₂', s₂', h₂'⟩ := h₂
+      apply ih₂ h₁'.right
+      have := StepExp.determ h₁'.left h₂'.left
+      simp [this]
+      exact h₂'.right
+
+theorem StepsExp.split_int
+    (h₁ : StepsExp (s₁, e₁) (s₃, .scon (.int ↑v)))
+    (h₂ : StepsExp (s₁, e₁) (s₂, e₂))
+    : StepsExp (s₂, e₂) (s₃, .scon (.int ↑v)) :=
+  let ⟨_, h₁⟩ := h₁
+  let ⟨_, h₂⟩ := h₂
+  BackStepsNExp.split_int
+    (BackStepsNExp.iff_steps.mpr h₁)
+    (BackStepsNExp.iff_steps.mpr h₂)

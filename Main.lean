@@ -46,33 +46,26 @@ example : [smlprop|
     ] := by
   repeat sml_step
 
-
+/- yes we can simplify this but this is readable for non-lean people imo -/
 theorem fact_nat_total
   : ∀ n : Nat, ∃ v : Nat,
     [smlprop|
       env ⊢ fact ↑n ==>* env ⊢ ↑v
     ] := by
   intro n
-  induction n
-  case zero =>
+  induction n with
+  | zero =>
     apply Exists.intro 1
     repeat sml_step
-  case succ n' ih =>
-    dbg_trace "\nsucc case"
+  | succ n' ih =>
     let ⟨v', ih⟩ := ih
-    apply Exists.intro (↑(n' + 1) * ↑v')
-    simp
+    apply Exists.intro ((n' + 1) * v')
     (calc
              (env, [sml_exp| fact (↑(n' + 1))])
       _ ==>* (env, [sml_exp| ↑(n' + 1) * (fn n => if n = 0 then 1 else n * fact (n - 1)) ↑n'])
           := by repeat sml_step
-
       _ ==>* (env, [sml_exp| ↑(n' + 1) * ↑v'])
-          := by apply StepsExp.func_ext (by decide)
-                apply StepsExp.tuple_tl (by simp) (by simp)
-                apply StepsExp.tuple_hd (by simp)
-                sorry
-
+          := by (repeat sml_congr); sml_apply_ih ih
       _ ==>* (env, [sml_exp| ↑((n' + 1) * v')])
           := by repeat sml_step
     )

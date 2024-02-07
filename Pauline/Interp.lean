@@ -8,6 +8,37 @@ namespace Pauline
 
 open Dynamic
 
+partial def eval_pat (s : State) : Pat → Exp → Option State
+  | p, .var x            => do eval_pat s p (← s.find x)
+  | p, .app _ _          => none
+  | p, .let_in _ _       => none
+  | p, .typed e _        => eval_pat s p e
+  | p, .raise e          => none
+  | p, .ite _ _ _        => none
+  | p, .case _ _         => none
+  | .wild, _             => s
+  | .bind x, e           => s.insert x ⟨e, sorry⟩
+  | .scon sc, .scon sc'  => if sc = sc' then s else none
+  | .tuple [], .tuple [] => s
+  | .tuple (p::ps), .tuple (e::es) => do
+    eval_pat (← eval_pat s p e) (.tuple ps) (.tuple es)
+  | .typed p _, e        => eval_pat s p e
+  | .layer name _ p, e   => eval_pat (s.insert name ⟨e, sorry⟩) p e
+  | _, _ => none
+
+def eval_dec (s : State) : Dec → Option State
+  | .val p e                 => eval_pat s p e
+  | .valrec p expPat expBody => eval_pat s p (.lam expPat expBody)
+  | .fun f pats _ body    => eval_pat s (.bind f) (.lam (.tuple pats) body)
+
+def eval_prog (s : State) (prog : Prog) : Option State :=
+  prog.decls.foldlM eval_dec s
+
+def eval_prog! (s : State) (prog : Prog) : State :=
+  match eval_prog s prog with
+  | some s => s
+  | none   => panic! "Error evaluating program {prog}!"
+
 inductive StepRes (init : State × Exp)
   | val   : isVal init.2 → StepRes init
   | var   : Ident → StepRes init -- free variable

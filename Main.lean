@@ -1,7 +1,4 @@
-import Pauline.Notation
-import Pauline.Statics
-import Pauline.Interp
-import Pauline.Tactic
+import Pauline
 
 open Pauline Pauline.Tactic
 
@@ -69,3 +66,28 @@ theorem fact_nat_total
       _ ==>* (env, [sml_exp| ↑((n' + 1) * v')])
           := by repeat sml_step
     )
+
+
+/- Another example, based on some code that ME used in lecture : ) -/
+def square := [sml|
+  fun square (n : int) : int = n * n
+]
+
+abbrev env' : State := -- todo automate
+  let init : State := default
+  init.insert "square" ⟨[sml_exp| fn n => n * n], by decide⟩
+
+-- https://www.cs.cmu.edu/~15150/resources/lectures/02/lecture02.html
+example : [smlprop|
+           env' ⊢ square (3 + 4)
+      ==>* env' ⊢ 49
+    ] := by
+  repeat sml_step
+
+theorem square_ensures :
+    ∀ n : Nat,
+      [smlprop|
+        env' ⊢ square ↑n ==>* env' ⊢ ↑(n * n)
+      ] := by
+  intro n
+  repeat sml_step

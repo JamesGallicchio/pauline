@@ -91,3 +91,41 @@ theorem square_ensures :
       ] := by
   intro n
   repeat sml_step
+
+
+def power := [sml|
+  fun power (n : int, k : int) : int =
+    if k = 0
+    then 1
+    else n * power(n, k - 1)
+]
+
+abbrev env'' : State := -- todo automate
+  let init : State := default
+  init.insert "power"
+    ⟨ [sml_exp| fn (n, k) => if k = 0 then 1 else n * power (n, k - 1)]
+    , by decide
+    ⟩
+
+theorem power_correct
+    : ∀ n k : Nat, [smlprop|
+        env'' ⊢ power (↑n, ↑k) ==>* env'' ⊢ ↑(n.pow k)
+      ] := by
+  intro n k
+  induction k with
+  | zero => repeat sml_step
+  | succ k' ih =>
+    (calc
+             (env'', [sml_exp| power (↑n, ↑(k' + 1))])
+      _ ==>* (env'', [sml_exp| ↑n * power (↑n, ↑(k' + 1) - 1)])
+          := by repeat sml_step                       -- stepping (else clause)
+      _ ==>* (env'', [sml_exp| ↑n * (fn (n, k) => if k = 0 then 1 else n * power (n, k - 1)) (↑n, ↑k')])
+          := by repeat sml_step                       -- eval + arithmetic math
+      _ ==>* (env'', [sml_exp| ↑n * ↑(n.pow k')])
+          := by (repeat sml_congr); sml_apply_ih ih   -- applying the IH
+      _ ==>* (env'', [sml_exp| ↑(n * n.pow k')])
+          := by repeat sml_step                       -- stepping
+    )
+    sml_step_rfl        -- gets out of the SML to prove the math part
+    simp [Nat.pow]
+    linarith

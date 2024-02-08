@@ -1,13 +1,16 @@
 import Std
 import Pauline.Dynamics
 import Mathlib.Tactic.NormNum
+import Mathlib.Tactic.Linarith
 
 namespace Pauline.Tactic
 
 open Lean Lean.Expr Lean.Meta
 
 macro "sml_step_rfl" : tactic =>
-  `(tactic| apply StepsExp.zero_step)
+  `(tactic| first | apply StepsExp.zero_step
+                  | apply StepsExp.scon_eq.mpr
+   )
 
 macro "sml_step_extern" : tactic =>
   `(tactic| ( apply StepExp.externStep

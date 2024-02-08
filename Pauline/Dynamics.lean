@@ -146,20 +146,18 @@ end
   | .wild           => body
   | .bind name      => subst e.val name body
   | .layer name _ p => substPat (subst e.val name body) e p
-  | .scon p_sc      => if let .scon e_sc := e.val then body else .raise Exn.bind
+  | .scon p_sc      => if let .scon e_sc := e.val then body else panic! "pattern scon"
   | .typed p _      => substPat body e p
-  | .tuple []       => if let .tuple [] := e.val then body else .raise Exn.bind
+  | .tuple []       => if let .tuple [] := e.val then body else panic! "pattern unit"
   | .tuple (p::[])  =>
     if let .tuple (e::[]) := e.val
     then substPat body ⟨e, sorry⟩ p
-    else .raise Exn.bind
+    else panic! "pattern single tuple"
   | .tuple (p::ps)  =>
     if let .tuple (e::es) := e.val then
       let res := substPat body ⟨e, sorry⟩ p
-      match substPat body ⟨.tuple es, sorry⟩ (.tuple ps) with
-      | .tuple res_rest => .tuple (res :: res_rest)
-      | _ => .raise Exn.bind
-    else .raise Exn.bind
+      substPat res ⟨.tuple es, sorry⟩ (.tuple ps)
+    else panic! s!"pattern larger tuple {e}"
 
 
 @[simp] private def callExtern.extractSCon : List Exp → List SCon
@@ -505,10 +503,22 @@ theorem StepsNExp.from_scon (n : Nat)
       cases hr
 
 theorem StepsExp.from_scon
-    : ∀ s' e, StepsExp (s, .scon sc) (s', e) → s = s' ∧ e = .scon sc := by
-  intro s' e h
-  cases h; next n h =>
-  exact StepsNExp.from_scon n s' e h
+    : ∀ s' e, StepsExp (s, .scon sc) (s', e) ↔ s = s' ∧ e = .scon sc := by
+  intro s' e
+  apply Iff.intro <;> intro h
+  . cases h; next n h =>
+    exact StepsNExp.from_scon n s' e h
+  . simp [h]; exact ⟨0, by simp⟩
+
+theorem StepsExp.scon_eq : ∀ {sc₁ sc₂ s₁ s₂},
+      StepsExp (s₁, .scon sc₁) (s₂, .scon sc₂)
+    ↔ s₁ = s₂ ∧ sc₁ = sc₂ := by
+  intro sc₁ sc₂ s₁ s₂
+  apply Iff.intro <;> intro h
+  . have := StepsExp.from_scon _ _ |>.mp h
+    simp only [Exp.scon.injEq, true_and] at *
+    simp [this]
+  . simp [h]; exact ⟨0, by simp⟩
 
 def Valuable : State × Exp → Prop :=
   fun (s₁, e) => ∃ v s₂, isVal v ∧ StepsExp (s₁, e) (s₂, v)
@@ -543,10 +553,10 @@ theorem BackStepsNExp.split_int
       simp at h₁ h₂
       simp [h₁] at h₂
       let ⟨e₂', s₂', h₂'⟩ := h₂
-      have := StepsExp.from_scon _ _ ⟨1, h₂'.left⟩
+      have := StepsExp.from_scon _ _ |>.mp ⟨1, h₂'.left⟩
       simp [this] at *
       have := BackStepsNExp.iff_steps.mp h₂'.right
-      simp [StepsExp.from_scon _ _ ⟨m', this⟩] at *
+      simp [StepsExp.from_scon _ _ |>.mp ⟨m', this⟩] at *
       apply ih₂ h₂'.right h₂'.right
     case succ n' =>
       simp at h₁ h₂
